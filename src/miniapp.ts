@@ -1,0 +1,256 @@
+// Telegram Mini App: одна статическая страница, данные — через /api.
+
+export const MINI_APP_HTML = /* html */ `<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Напоминания</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #fff);
+    --bg2: var(--tg-theme-secondary-bg-color, #f2f2f7);
+    --text: var(--tg-theme-text-color, #000);
+    --hint: var(--tg-theme-hint-color, #8e8e93);
+    --link: var(--tg-theme-link-color, #2481cc);
+    --btn: var(--tg-theme-button-color, #2481cc);
+    --btn-text: var(--tg-theme-button-text-color, #fff);
+    --danger: var(--tg-theme-destructive-text-color, #e53935);
+    --section: var(--tg-theme-section-bg-color, var(--bg));
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 12px 16px 32px; background: var(--bg2); color: var(--text);
+         font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  h2 { font-size: 13px; text-transform: uppercase; color: var(--hint); font-weight: 500; margin: 20px 4px 8px; }
+  .card { background: var(--section); border-radius: 12px; padding: 12px; }
+  .tabs { display: flex; gap: 4px; background: var(--bg2); border-radius: 9px; padding: 2px; margin-bottom: 12px; }
+  .tabs button { flex: 1; border: 0; background: transparent; color: var(--text); padding: 7px; border-radius: 7px; font: inherit; }
+  .tabs button.on { background: var(--section); box-shadow: 0 1px 3px rgba(0,0,0,.12); font-weight: 600; }
+  label { display: block; font-size: 13px; color: var(--hint); margin: 10px 0 4px; }
+  input, textarea, select { width: 100%; font: inherit; color: var(--text); background: var(--bg2);
+         border: 1px solid transparent; border-radius: 8px; padding: 9px 10px; outline: none; }
+  input:focus, textarea:focus, select:focus { border-color: var(--btn); }
+  textarea { resize: vertical; min-height: 64px; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .days { display: flex; gap: 4px; margin-top: 8px; }
+  .days label { flex: 1; margin: 0; text-align: center; padding: 6px 0; border-radius: 8px; background: var(--bg2); color: var(--text); font-size: 13px; cursor: pointer; }
+  .days input { display: none; }
+  .days label.on { background: var(--btn); color: var(--btn-text); }
+  .primary { width: 100%; margin-top: 14px; border: 0; border-radius: 10px; padding: 12px; font: inherit; font-weight: 600;
+             background: var(--btn); color: var(--btn-text); cursor: pointer; }
+  .primary:disabled { opacity: .6; }
+  .hint { color: var(--hint); font-size: 13px; margin-top: 8px; }
+  .examples span { color: var(--link); cursor: pointer; }
+  .err { color: var(--danger); font-size: 14px; margin-top: 8px; min-height: 1em; }
+  .item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--bg2); }
+  .item:last-child { border-bottom: 0; }
+  .item .body { flex: 1; min-width: 0; }
+  .item .t { word-wrap: break-word; white-space: pre-wrap; }
+  .item .w { color: var(--hint); font-size: 13px; margin-top: 2px; }
+  .item button { border: 0; background: none; color: var(--danger); font-size: 18px; padding: 2px 6px; cursor: pointer; }
+  .empty { color: var(--hint); text-align: center; padding: 16px 0; }
+  .tz { color: var(--hint); font-size: 13px; margin: 8px 4px; }
+  .tz a { color: var(--link); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="tabs">
+      <button data-tab="quick" class="on">Текстом</button>
+      <button data-tab="form">Форма</button>
+    </div>
+
+    <div id="quick">
+      <textarea id="qtext" placeholder="Например: завтра в 10:30 позвонить маме"></textarea>
+      <div class="hint examples">Примеры:
+        <span>через 30 минут проверить духовку</span>,
+        <span>каждый день в 9:00 зарядка</span>,
+        <span>по будням в 8:30 таблетка</span>,
+        <span>каждый месяц 15 числа оплатить интернет</span>
+      </div>
+    </div>
+
+    <div id="form" hidden>
+      <label for="ftext">Что напомнить</label>
+      <textarea id="ftext" placeholder="Позвонить маме"></textarea>
+      <div class="row">
+        <div><label for="fdate">Дата</label><input type="date" id="fdate"></div>
+        <div><label for="ftime">Время</label><input type="time" id="ftime"></div>
+      </div>
+      <label for="frepeat">Повторять</label>
+      <select id="frepeat">
+        <option value="">Не повторять</option>
+        <option value="day">Каждый день</option>
+        <option value="weekdays">По дням недели…</option>
+        <option value="week">Каждую неделю</option>
+        <option value="month">Каждый месяц</option>
+        <option value="year">Каждый год</option>
+        <option value="custom">Свой интервал…</option>
+      </select>
+      <div class="days" id="fdays" hidden></div>
+      <div class="row" id="fcustom" hidden>
+        <div><label for="fevery">Каждые</label><input type="number" id="fevery" min="1" max="1000" value="2"></div>
+        <div><label for="funit">&nbsp;</label>
+          <select id="funit">
+            <option value="minute">минут</option>
+            <option value="hour" selected>часов</option>
+            <option value="day">дней</option>
+            <option value="week">недель</option>
+            <option value="month">месяцев</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <button class="primary" id="save">Создать напоминание</button>
+    <div class="err" id="err"></div>
+  </div>
+
+  <h2>Активные напоминания</h2>
+  <div class="card" id="list"><div class="empty">Загрузка…</div></div>
+  <div class="tz" id="tz"></div>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+const initData = tg ? tg.initData : "";
+const $ = (id) => document.getElementById(id);
+let mode = "quick";
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: { "content-type": "application/json", authorization: "tma " + initData },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ("Ошибка " + res.status));
+  return data;
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function haptic(type) { try { tg && tg.HapticFeedback.notificationOccurred(type); } catch (e) {} }
+
+async function load() {
+  if (!initData) {
+    $("list").innerHTML = '<div class="empty">Откройте это приложение из Telegram-бота.</div>';
+    $("save").disabled = true;
+    return;
+  }
+  try {
+    const data = await api("GET", "/api/reminders");
+    render(data.reminders);
+    const local = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    $("tz").innerHTML = "Часовой пояс: " + esc(data.tz) +
+      (local && local !== data.tz ? ' · <a href="#" id="settz">использовать ' + esc(local) + "</a>" : "");
+    const link = $("settz");
+    if (link) link.onclick = async (e) => {
+      e.preventDefault();
+      try { await api("PUT", "/api/tz", { tz: local }); load(); } catch (err) { showErr(err.message); }
+    };
+  } catch (e) {
+    $("list").innerHTML = '<div class="empty">' + esc(e.message) + "</div>";
+  }
+}
+
+function render(items) {
+  if (!items.length) { $("list").innerHTML = '<div class="empty">Пока пусто</div>'; return; }
+  $("list").innerHTML = items.map((r) =>
+    '<div class="item"><div class="body"><div class="t">' + esc(r.text) + '</div><div class="w">🕑 ' + esc(r.next_text) +
+    (r.repeat_text ? " · 🔁 " + esc(r.repeat_text) : "") + '</div></div><button data-id="' + r.id + '" title="Удалить">✕</button></div>'
+  ).join("");
+}
+
+$("list").addEventListener("click", async (e) => {
+  const id = e.target.dataset && e.target.dataset.id;
+  if (!id) return;
+  const go = async () => {
+    try { await api("DELETE", "/api/reminders/" + id); haptic("success"); load(); } catch (err) { showErr(err.message); }
+  };
+  if (tg && tg.showConfirm) tg.showConfirm("Удалить напоминание?", (ok) => ok && go());
+  else if (confirm("Удалить напоминание?")) go();
+});
+
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
+  mode = b.dataset.tab;
+  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
+  $("quick").hidden = mode !== "quick";
+  $("form").hidden = mode !== "form";
+  showErr("");
+});
+
+document.querySelectorAll(".examples span").forEach((s) => s.onclick = () => { $("qtext").value = s.textContent; $("qtext").focus(); });
+
+// Дни недели
+["пн", "вт", "ср", "чт", "пт", "сб", "вс"].forEach((d, i) => {
+  const l = document.createElement("label");
+  l.innerHTML = '<input type="checkbox" value="' + (i + 1) + '">' + d;
+  l.querySelector("input").onchange = (e) => l.classList.toggle("on", e.target.checked);
+  $("fdays").appendChild(l);
+});
+$("frepeat").onchange = () => {
+  $("fdays").hidden = $("frepeat").value !== "weekdays";
+  $("fcustom").hidden = $("frepeat").value !== "custom";
+};
+
+// Значения по умолчанию: через час
+(function () {
+  const d = new Date(Date.now() + 3600e3);
+  const pad = (n) => String(n).padStart(2, "0");
+  $("fdate").value = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  $("ftime").value = pad(d.getHours()) + ":00";
+})();
+
+function showErr(msg) { $("err").textContent = msg; }
+
+function formPayload() {
+  const text = $("ftext").value.trim();
+  if (!text) throw new Error("Введите текст напоминания");
+  if (!$("fdate").value || !$("ftime").value) throw new Error("Укажите дату и время");
+  const at = new Date($("fdate").value + "T" + $("ftime").value).getTime();
+  let repeat = null;
+  const r = $("frepeat").value;
+  if (r === "weekdays") {
+    const days = [...$("fdays").querySelectorAll("input:checked")].map((x) => Number(x.value));
+    if (!days.length) throw new Error("Выберите дни недели");
+    repeat = { unit: "week", every: 1, weekdays: days };
+  } else if (r === "custom") {
+    repeat = { unit: $("funit").value, every: Number($("fevery").value) || 1 };
+  } else if (r) {
+    repeat = { unit: r, every: 1 };
+  }
+  return { text, at, repeat };
+}
+
+$("save").onclick = async () => {
+  showErr("");
+  let body;
+  try {
+    body = mode === "quick" ? { text: $("qtext").value.trim() } : formPayload();
+    if (!body.text) throw new Error("Напишите, что и когда напомнить");
+  } catch (e) { return showErr(e.message); }
+  $("save").disabled = true;
+  try {
+    const { reminder } = await api("POST", "/api/reminders", body);
+    haptic("success");
+    $("qtext").value = ""; $("ftext").value = "";
+    if (tg && tg.showPopup) tg.showPopup({ message: "Напомню " + reminder.next_text + (reminder.repeat_text ? " (" + reminder.repeat_text + ")" : "") });
+    load();
+  } catch (e) {
+    haptic("error");
+    showErr(e.message);
+  } finally {
+    $("save").disabled = false;
+  }
+};
+
+load();
+</script>
+</body>
+</html>`;
