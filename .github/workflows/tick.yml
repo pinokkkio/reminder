@@ -47,7 +47,7 @@ jobs:
             echo "Окружение не настроено или ещё не задеплоено — пропускаю"
           fi
       - if: steps.gate.outputs.run == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: deployed-${{ matrix.environment }}
       - if: steps.gate.outputs.run == 'true'

@@ -44,7 +44,7 @@ jobs:
       DEPLOY_ENV: ${{ inputs.environment }}
       ALLOW_UNSAFE_MIGRATIONS: ${{ inputs.allow_unsafe_migrations }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
       - uses: actions/setup-node@v4
