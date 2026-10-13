@@ -38,7 +38,7 @@
 Telegram или на вызов из мини-приложения. Поэтому наступившие напоминания отправляются:
 
 1. **Раз в 5 минут** — workflow GitHub Actions [`tick.yml`](.github/workflows/tick.yml)
-   выполняет `npx tgcloud run endpoints/tick`. Это основной механизм.
+   выполняет `npx tgcloud run endpoints/tick` (из мини-приложения этот модуль не вызвать).
 2. **При каждом сообщении, нажатии кнопки или открытии мини-приложения** — попутно.
 
 Отсюда точность: в пределах ~5 минут, иногда больше (GitHub не гарантирует пунктуальность
@@ -51,52 +51,87 @@ Telegram или на вызов из мини-приложения. Поэтом
 планировщик Windows, другой CI. Если в Telegram Serverless появится встроенный cron, ему
 достаточно вызывать `deliverDue()` из `tgcloud/lib/scheduler.js`.
 
-## Развёртывание
+## CI/CD
 
-Понадобятся Node.js 18+ и бот в [@BotFather](https://t.me/BotFather).
+```
+PR ──▶ CI: правила платформы · тесты · план миграции схемы (production)
+                                   │
+merge в main ──▶ Deploy: CI ──▶ staging ──▶ production (с подтверждением, если включено)
+                                   │
+                  каждое окружение: ворота миграций → безопасные миграции → push кода и
+                  мини-приложения → миграции после кода → вебхук, команды, меню →
+                  smoke-тест → тег deployed-<env>
+                                   │
+Tick (каждые 5 мин) ──▶ npx tgcloud run endpoints/tick из тега deployed-<env>
+```
 
-1. **Установите зависимости и привяжите проект к боту:**
-   ```bash
-   npm install
-   npx tgcloud login     # токен: @BotFather → ваш бот → Serverless → CLI Access → Access token
-   ```
+| Workflow | Когда | Что делает |
+|---|---|---|
+| [`ci.yml`](.github/workflows/ci.yml) | PR | `npm run check` (правила рантайма), `npm test`; в сводке — план миграции для production |
+| [`deploy.yml`](.github/workflows/deploy.yml) | push в `main`, вручную | CI, затем [`_deploy.yml`](.github/workflows/_deploy.yml) для staging и production |
+| [`tick.yml`](.github/workflows/tick.yml) | каждые 5 минут | Будильник для каждого задеплоенного окружения |
 
-2. **Задеплойте код и мини-приложение, затем создайте таблицы:**
-   ```bash
-   npm run deploy        # = npx tgcloud push
-   npm run migrate       # = npx tgcloud migrate
-   ```
-   Вебхук для `handlers/message` и `handlers/callback_query` платформа настраивает сама.
+**Что защищает от поломок:**
+- [`scripts/check-platform.mjs`](scripts/check-platform.mjs) — правила рантайма, которые иначе всплыли бы
+  только после деплоя: импорты только `sdk` и относительные с `.js`, нет `require`/`process`/`node:`,
+  имена хендлеров — типы апдейтов, нет внешних ключей, синтаксис.
+- Тесты гоняют хендлеры, эндпоинты и рассылку на фейковом `sdk` со схемой из `tgcloud/schema.js`.
+- [`scripts/schema-check.mjs`](scripts/schema-check.mjs) — план миграции против базы окружения. Новые
+  таблицы, колонки и индексы применяются автоматически **до** выкладки кода (новый код не упадёт на
+  отсутствующей колонке). Удаления и смена типов останавливают деплой: их применяют вручную
+  (`npx tgcloud migrate`) или явно разрешают при ручном запуске (`allow_unsafe_migrations`), тогда
+  они выполняются **после** выкладки кода.
+- [`scripts/smoke.mjs`](scripts/smoke.mjs) после деплоя: мини-приложение отдаётся, эндпоинты отвечают
+  401 без `initData` (то есть задеплоены и защищены), вебхук синхронизирован.
+- Деплои одного окружения идут строго по очереди; production не выкатывается, если упал staging.
 
-3. **Подключите мини-приложение.** `push` напечатает его адрес вида `https://app<id>.tgcloud.ai/`.
-   - Впишите его в `MINI_APP_URL` в [`tgcloud/lib/config.js`](tgcloud/lib/config.js) и снова выполните
-     `npm run deploy`, чтобы в `/start` и `/app` появилась кнопка «📱 Открыть приложение».
-   - Чтобы приложение открывалось кнопкой меню, в @BotFather: ваш бот → Bot Settings →
-     Menu Button → укажите тот же адрес.
+**Версии и откат.** Каждый деплой — запись в Settings → Environments с адресом мини-приложения;
+команда `/version` в боте показывает окружение и коммит. Откат: Actions → Deploy → Run workflow,
+выберите окружение и укажите в `ref` предыдущий коммит или тег. Схема БД при откате не
+откатывается — поэтому изменения схемы делаются только добавлением, а удаление — отдельным
+деплоем, когда старый код уже не нужен.
 
-4. **Включите будильник.** Опубликуйте проект в репозиторий на GitHub и в Settings → Secrets and
-   variables → Actions добавьте:
-   - секрет `TGCLOUD_TOKEN` — тот же токен CLI Access;
-   - переменную `TICK_ENABLED` = `true`.
+### Первая настройка
 
-   Проверить можно вручную: Actions → Tick → Run workflow, или локально `npm run tick`.
+1. **Боты.** Для production — основной бот, для staging — отдельный тестовый бот в
+   [@BotFather](https://t.me/BotFather) (staging можно не заводить). У каждого включите Serverless и
+   возьмите токен: бот → Serverless → CLI Access → Access token.
 
-5. Напишите боту `/start`. Готово.
+2. **Секреты и переменные** (Settings → Secrets and variables → Actions):
+   - секреты `TGCLOUD_TOKEN_PRODUCTION` и (если есть staging) `TGCLOUD_TOKEN_STAGING`;
+   - переменная `DEPLOY_ENVIRONMENTS` = `staging,production` или `production`.
 
-> `tgcloud run` выполняет **локальную** копию модулей. Будильник берёт код из ветки по умолчанию,
-> поэтому держите её в том же состоянии, что задеплоено (с этим помогает автодеплой ниже).
+3. **Окружение production с подтверждением** (по желанию): Settings → Environments → New environment
+   `production` → Required reviewers. Тогда выкладка в production ждёт нажатия «Approve».
+
+4. **Защита ветки `main`** (рекомендуется): Settings → Branches → Add rule → Require a pull request
+   и Require status checks → `Lint & test`.
+
+5. **Влейте код в `main`** — CD развернёт окружения, создаст таблицы, настроит вебхук, команды и
+   кнопку меню «Напоминания» с мини-приложением. Будильник подхватит окружения сам.
+
+6. Напишите боту `/start`.
+
+> Будильник в GitHub Actions бесплатен для публичных репозиториев. В приватном каждый запуск
+> тратит минимум минуту из лимита Actions (≈ 8 600 минут в месяц на окружение), так что там
+> разумнее запускать `npm run tick` по cron на своём сервере или увеличить интервал.
 > GitHub приостанавливает расписания в репозиториях без активности 60 дней — тогда нажмите
 > «Enable workflow» во вкладке Actions.
 
-### Автодеплой (необязательно)
+### Ручной деплой без GitHub
 
-[`deploy.yml`](.github/workflows/deploy.yml) при пуше в `main` прогоняет тесты, делает
-`tgcloud push` и применяет безопасные миграции. Включается переменной `DEPLOY_ENABLED=true`
-(секрет `TGCLOUD_TOKEN` тот же).
+```bash
+npm install
+npx tgcloud login     # токен CLI Access
+npm run deploy        # проверки → миграции → push → настройка бота
+```
+Адрес мини-приложения для кнопок впишите в [`tgcloud/lib/deploy-info.js`](tgcloud/lib/deploy-info.js)
+(в CD он вычисляется автоматически). Будильник — `npm run tick` по cron.
 
 ## Разработка
 
 ```bash
+npm run check                              # правила рантайма платформы
 npm test                                   # тесты (локально, без платформы)
 npx tgcloud status                         # что изменилось относительно облака
 npx tgcloud run handlers/message '{ chat: { id: 1, type: "private" }, text: "/help" }'
@@ -104,11 +139,13 @@ npx tgcloud run endpoints/listReminders '{}' --ctx '{ initData: { user: { id: 1 
 ```
 
 Тесты подменяют платформенный `sdk` фейком ([`test/fake-sdk.js`](test/fake-sdk.js)): SQLite в памяти
-с таблицами из настоящего `tgcloud/schema.js` и запись вызовов Bot API. Так проверяются хендлеры,
-эндпоинты и рассылка целиком.
+с таблицами из настоящего `tgcloud/schema.js` и запись вызовов Bot API.
 
 Правила платформы, которые важно помнить: импорты своих модулей — только относительные и с `.js`,
 npm-пакетов и файловой системы в рантайме нет, все вызовы `db` асинхронные.
+
+`@tgcloud/cli` закреплён точной версией: скрипты CD используют его внутренние модули
+([`scripts/lib/tgcloud.mjs`](scripts/lib/tgcloud.mjs)). Обновления предлагает Dependabot.
 
 ## Структура
 
@@ -117,13 +154,16 @@ npm-пакетов и файловой системы в рантайме нет
 | `tgcloud/schema.js` | Таблицы `users` и `reminders` |
 | `tgcloud/handlers/message.js` | Входящие сообщения: команды и создание напоминаний |
 | `tgcloud/handlers/callback_query.js` | Кнопки: удалить, отменить, отложить, отключить повторы |
-| `tgcloud/endpoints/*.js` | API мини-приложения и `tick` для будильника |
+| `tgcloud/endpoints/*.js` | API мини-приложения; служебные `tick` (будильник) и `setup` (команды, меню) |
 | `tgcloud/lib/parser.js` | Разбор русского текста в дату, время и правило повтора |
 | `tgcloud/lib/repeat.js` | Правила повтора и расчёт следующего срабатывания |
 | `tgcloud/lib/time.js` | Часовые пояса через `Intl`, без внешних библиотек |
 | `tgcloud/lib/scheduler.js` | Рассылка наступивших напоминаний |
 | `tgcloud/lib/store.js` | Запросы к базе |
-| `tgcloud/lib/config.js` | Настройки: пояс по умолчанию, адрес мини-приложения, лимиты |
+| `tgcloud/lib/config.js` | Настройки: пояс по умолчанию, команды, лимиты |
+| `tgcloud/lib/deploy-info.js` | Окружение, версия, адрес мини-приложения — пишется при деплое |
+| `scripts/` | Проверки и шаги CI/CD |
+| `.github/workflows/` | CI, CD и будильник |
 | `web/index.html` | Мини-приложение (одна страница, без сборки) |
 | `tgcloud.jsonc` | Конфиг проекта: папка `web` хостится как мини-приложение |
 

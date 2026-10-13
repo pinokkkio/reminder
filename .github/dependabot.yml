@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    # @tgcloud/cli закреплён точно: scripts/lib/tgcloud.mjs использует его внутренние модули.
+    # PR от Dependabot прогонит CI; перед мержем проверьте schema-plan и smoke на staging.

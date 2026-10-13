@@ -8,6 +8,7 @@ import createReminder from '../tgcloud/endpoints/createReminder.js';
 import deleteReminder from '../tgcloud/endpoints/deleteReminder.js';
 import setTimezone from '../tgcloud/endpoints/setTimezone.js';
 import tick from '../tgcloud/endpoints/tick.js';
+import setup from '../tgcloud/endpoints/setup.js';
 
 const CHAT = 1001;
 // Вторник, 13 октября 2026, 11:20 по Москве
@@ -205,5 +206,23 @@ describe('эндпоинты мини-приложения', () => {
     expect(await setTimezone({ tz: 'Asia/Yekaterinburg' }, ctx)).toEqual({ tz: 'Asia/Yekaterinburg' });
     expect((await listReminders({}, ctx)).tz).toBe('Asia/Yekaterinburg');
     await expect(setTimezone({ tz: 'Mars/Base' }, ctx)).rejects.toMatchObject({ parameters: { code: 'BAD_TZ' } });
+  });
+});
+
+describe('служебные модули', () => {
+  it('tick и setup нельзя вызвать из мини-приложения', async () => {
+    await expect(tick({}, ctx)).rejects.toMatchObject({ parameters: { code: 'INTERNAL_ONLY' } });
+    await expect(setup({}, ctx)).rejects.toMatchObject({ parameters: { code: 'INTERNAL_ONLY' } });
+  });
+
+  it('setup выставляет команды', async () => {
+    const res = await setup({}, {});
+    expect(calls.map((c) => c.method)).toContain('setMyCommands');
+    expect(res).toMatchObject({ environment: 'local', version: 'dev' });
+  });
+
+  it('/version показывает окружение и версию', async () => {
+    await onMessage(message('/version'));
+    expect(lastText()).toBe('<code>local dev</code>');
   });
 });

@@ -1,31 +1,72 @@
-# Автодеплой при пуше в main: тесты → push модулей и мини-приложения → безопасные миграции.
-# Включение: секрет TGCLOUD_TOKEN и переменная репозитория DEPLOY_ENABLED=true.
+# CD: push в main → тесты → staging → production.
+#
+# Настройка (Settings → Secrets and variables → Actions):
+#   переменная DEPLOY_ENVIRONMENTS — какие окружения есть: "staging,production" или "production"
+#   секреты TGCLOUD_TOKEN_STAGING / TGCLOUD_TOKEN_PRODUCTION — CLI-токены ботов
+#     (@BotFather → бот → Serverless → CLI Access → Access token)
+#   окружение production (Settings → Environments) — по желанию с обязательным подтверждением
+#
+# Ручной запуск (Actions → Deploy → Run workflow): деплой любой ветки, тега или коммита
+# в выбранное окружение — так же делается откат (укажите ref предыдущей версии).
 name: Deploy
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      environment:
+        description: Окружение
+        type: choice
+        options: [staging, production]
+        default: staging
+      ref:
+        description: Ветка, тег или коммит (откат — укажите старый коммит)
+        type: string
+        default: main
+      allow_unsafe_migrations:
+        description: Разрешить опасные миграции (удаление колонок/таблиц)
+        type: boolean
+        default: false
 
-concurrency:
-  group: deploy
-  cancel-in-progress: false
+permissions:
+  contents: read
 
 jobs:
-  deploy:
-    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm test
-      - run: npx tgcloud push
-        env:
-          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
-      - run: npx tgcloud migrate --safe
-        env:
-          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+  ci:
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ inputs.ref || github.sha }}
+
+  staging:
+    needs: ci
+    if: >-
+      (github.event_name == 'push' && contains(vars.DEPLOY_ENVIRONMENTS, 'staging')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    uses: ./.github/workflows/_deploy.yml
+    permissions:
+      contents: write
+    with:
+      environment: staging
+      ref: ${{ inputs.ref || github.sha }}
+      allow_unsafe_migrations: ${{ inputs.allow_unsafe_migrations == true }}
+    secrets:
+      TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN_STAGING }}
+
+  production:
+    needs: [ci, staging]
+    # В production — только если staging прошёл или не настроен
+    if: >-
+      always() && needs.ci.result == 'success' &&
+      (needs.staging.result == 'success' || needs.staging.result == 'skipped') &&
+      ((github.event_name == 'push' && contains(vars.DEPLOY_ENVIRONMENTS, 'production')) ||
+       (github.event_name == 'workflow_dispatch' && inputs.environment == 'production'))
+    uses: ./.github/workflows/_deploy.yml
+    permissions:
+      contents: write
+    with:
+      environment: production
+      ref: ${{ inputs.ref || github.sha }}
+      allow_unsafe_migrations: ${{ inputs.allow_unsafe_migrations == true }}
+    secrets:
+      TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN_PRODUCTION }}

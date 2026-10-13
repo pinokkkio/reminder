@@ -2,11 +2,13 @@
 //
 // У Telegram Serverless нет встроенного cron, поэтому этот модуль периодически
 // запускают снаружи: npx tgcloud run endpoints/tick (см. .github/workflows/tick.yml).
-// Вызывать его может кто угодно — он лишь отправляет то, что и так пора отправить.
+// Из мини-приложения не вызывается (assertInternal).
 
 import { deliverDue } from '../lib/scheduler.js';
+import { assertInternal } from '../lib/webapp.js';
 
 export default async function (input, ctx) {
+  assertInternal(ctx);
   let total = { sent: 0, failed: 0 };
   // Несколько проходов, если накопилось больше одной пачки
   for (let i = 0; i < 5; i++) {

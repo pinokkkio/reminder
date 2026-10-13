@@ -98,7 +98,9 @@ export const api = new Proxy({}, {
       failures.delete(method);
       throw new BotApiError(code, `fake error ${code}`, method);
     }
-    return method === 'sendMessage' ? { message_id: calls.length } : true;
+    if (method === 'sendMessage') return { message_id: calls.length };
+    if (method === 'getMe') return { id: 1, is_bot: true, username: 'test_bot' };
+    return true;
   },
 });
 

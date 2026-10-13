@@ -1,0 +1,91 @@
+# Деплой одного окружения (вызывается из deploy.yml).
+#
+#  1. deploy-info.js: окружение, версия, адрес мини-приложения
+#  2. ворота: опасные изменения схемы останавливают деплой
+#  3. безопасные миграции ДО кода (новые таблицы/колонки), чтобы новый код не упал
+#  4. push модулей и мини-приложения
+#  5. миграции после кода (удаления — только если разрешены явно)
+#  6. вебхук, команды, кнопка меню
+#  7. smoke-тест задеплоенного окружения
+#  8. тег deployed-<env> — по нему будильник запускает ровно задеплоенный код
+name: Deploy environment
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      ref:
+        type: string
+        default: ''
+      allow_unsafe_migrations:
+        type: boolean
+        default: false
+    secrets:
+      TGCLOUD_TOKEN:
+        required: true
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ steps.info.outputs.url }}
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: write   # тег deployed-<env>
+    env:
+      TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+      DEPLOY_ENV: ${{ inputs.environment }}
+      ALLOW_UNSAFE_MIGRATIONS: ${{ inputs.allow_unsafe_migrations }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Версия и адрес мини-приложения
+        id: info
+        run: |
+          echo "DEPLOY_VERSION=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "url=https://${TGCLOUD_TOKEN%%:*}.tgcloud.ai/" >> "$GITHUB_OUTPUT"
+      - run: node scripts/configure.mjs
+      - run: npm run check
+
+      - name: План миграции (ворота)
+        run: node scripts/schema-check.mjs
+      - name: Безопасные миграции до кода
+        run: npx tgcloud migrate --local --safe
+
+      - name: Push модулей и мини-приложения
+        run: npx tgcloud push
+
+      - name: Миграции после кода
+        run: |
+          if [ "$ALLOW_UNSAFE_MIGRATIONS" = "true" ]; then
+            npx tgcloud migrate --yes
+          else
+            npx tgcloud migrate --safe
+          fi
+
+      - name: Вебхук, команды, кнопка меню
+        run: |
+          npx tgcloud webhook sync
+          npx tgcloud run endpoints/setup '{}'
+
+      - name: Smoke-тест
+        run: node scripts/smoke.mjs
+
+      - name: Тег deployed-${{ inputs.environment }}
+        run: |
+          git tag -f "deployed-$DEPLOY_ENV" HEAD
+          git push -f origin "refs/tags/deployed-$DEPLOY_ENV"

@@ -1,12 +1,46 @@
+# CI: правила платформы + тесты на каждый PR (push в main проверяет deploy.yml,
+# вызывая этот же workflow). В PR дополнительно показывается план миграции для production.
 name: CI
 
 on:
-  push:
   pull_request:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
 
 jobs:
-  test:
+  check:
+    name: Lint & test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Правила рантайма Telegram Serverless
+        run: npm run check
+      - name: Тесты
+        run: npm test
+
+  schema-plan:
+    name: Schema plan (production)
+    # Секреты недоступны в PR из форков; без настроенного production — пропускаем
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(vars.DEPLOY_ENVIRONMENTS, 'production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -14,4 +48,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
+      - run: node scripts/schema-check.mjs --report-only
+        env:
+          DEPLOY_ENV: production
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN_PRODUCTION }}

@@ -1,6 +1,7 @@
 // Логика чата: команды, разбор напоминаний, кнопки.
 
 import { api } from 'sdk';
+import { ENVIRONMENT, VERSION } from './config.js';
 import { HELP, appKeyboard, confirmationText, edit, escapeHtml, listView, send } from './messages.js';
 import { parseReminder } from './parser.js';
 import * as store from './store.js';
@@ -37,6 +38,8 @@ async function onCommand(msg, name, arg) {
     }
     case 'tz':
       return onTz(chatId, arg);
+    case 'version':
+      return send(chatId, `<code>${escapeHtml(ENVIRONMENT)} ${escapeHtml(VERSION)}</code>`);
     case 'del':
     case 'delete': {
       const id = Number(arg.replace(/^#/, ''));

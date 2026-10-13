@@ -11,6 +11,15 @@ export function userId(ctx) {
   return id;
 }
 
+/**
+ * Служебные модули (tick, setup) запускаются только через `npx tgcloud run`.
+ * Через HTTP платформа всегда передаёт проверенную initData, а `run` — нет,
+ * поэтому её наличие означает вызов из мини-приложения.
+ */
+export function assertInternal(ctx) {
+  if (ctx?.initData) throw new EndpointError('Недоступно', { code: 'INTERNAL_ONLY' });
+}
+
 /** @param {import('./store.js').Reminder} r */
 export function reminderView(r) {
   return {

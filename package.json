@@ -4,14 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "deploy": "tgcloud push",
+    "check": "node scripts/check-platform.mjs",
+    "test": "vitest run",
+    "verify": "npm run check && npm test",
+    "deploy": "npm run verify && tgcloud migrate --local --safe && tgcloud push && tgcloud migrate --safe && tgcloud run endpoints/setup",
     "migrate": "tgcloud migrate",
     "status": "tgcloud status",
-    "tick": "tgcloud run endpoints/tick",
-    "test": "vitest run"
+    "tick": "tgcloud run endpoints/tick"
   },
   "devDependencies": {
-    "@tgcloud/cli": "^0.2.0",
+    "@tgcloud/cli": "0.2.0",
     "vitest": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=22.5"
   }
 }

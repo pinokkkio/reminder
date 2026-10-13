@@ -1,14 +1,11 @@
-# «Будильник» для напоминаний.
+# «Будильник» для напоминаний: у Telegram Serverless нет встроенного cron.
 #
-# У Telegram Serverless нет встроенного cron, поэтому GitHub Actions раз в 5 минут
-# запускает tgcloud/endpoints/tick.js на платформе (npx tgcloud run). Модуль
-# отправляет все наступившие напоминания.
+# Раз в 5 минут для каждого окружения из DEPLOY_ENVIRONMENTS запускает
+# tgcloud/endpoints/tick.js (`npx tgcloud run`) — из тега deployed-<env>,
+# то есть ровно тот код, что задеплоен. Окружение без тега пропускается.
 #
-# Включение: секрет репозитория TGCLOUD_TOKEN (BotFather → ваш бот → Serverless →
-# CLI Access → Access token) и переменная репозитория TICK_ENABLED=true.
-#
-# GitHub не гарантирует точность расписания: запуски бывают с задержкой в несколько
-# минут. Между запусками напоминания всё равно уходят при любом сообщении боту
+# GitHub не гарантирует точность расписания: запуски бывают с задержкой.
+# Между запусками напоминания всё равно уходят при любом сообщении боту
 # или открытии мини-приложения.
 name: Tick
 
@@ -17,22 +14,50 @@ on:
     - cron: '*/5 * * * *'
   workflow_dispatch:
 
-concurrency:
-  group: tick
-  cancel-in-progress: false
+permissions:
+  contents: read
 
 jobs:
   tick:
-    if: ${{ vars.TICK_ENABLED == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - environment: staging
+            secret: TGCLOUD_TOKEN_STAGING
+          - environment: production
+            secret: TGCLOUD_TOKEN_PRODUCTION
+    name: Tick ${{ matrix.environment }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    concurrency:
+      group: tick-${{ matrix.environment }}
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Окружение задеплоено?
+        id: gate
+        env:
+          ENABLED: ${{ contains(vars.DEPLOY_ENVIRONMENTS, matrix.environment) }}
+          TAG: deployed-${{ matrix.environment }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$ENABLED" = "true" ] && git ls-remote --exit-code --tags "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY" "refs/tags/$TAG" >/dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Окружение не настроено или ещё не задеплоено — пропускаю"
+          fi
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: deployed-${{ matrix.environment }}
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npx tgcloud run endpoints/tick '{}'
+      - if: steps.gate.outputs.run == 'true'
+        run: npm ci
+      - if: steps.gate.outputs.run == 'true'
+        run: npx tgcloud run endpoints/tick '{}'
         env:
-          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+          TGCLOUD_TOKEN: ${{ secrets[matrix.secret] }}
