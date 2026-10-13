@@ -56,7 +56,7 @@ Telegram или на вызов из мини-приложения. Поэтом
 ```
 PR ──▶ CI: правила платформы · тесты · план миграции схемы (production)
                                    │
-merge в main ──▶ Deploy: CI ──▶ staging ──▶ production (с подтверждением, если включено)
+merge в основную ветку ──▶ Deploy: CI ──▶ staging ──▶ production (с подтверждением, если включено)
                                    │
                   каждое окружение: ворота миграций → безопасные миграции → push кода и
                   мини-приложения → миграции после кода → вебхук, команды, меню →
@@ -68,7 +68,7 @@ Tick (каждые 5 мин) ──▶ npx tgcloud run endpoints/tick из те�
 | Workflow | Когда | Что делает |
 |---|---|---|
 | [`ci.yml`](.github/workflows/ci.yml) | PR | `npm run check` (правила рантайма), `npm test`; в сводке — план миграции для production |
-| [`deploy.yml`](.github/workflows/deploy.yml) | push в `main`, вручную | CI, затем [`_deploy.yml`](.github/workflows/_deploy.yml) для staging и production |
+| [`deploy.yml`](.github/workflows/deploy.yml) | push в основную ветку (`main` или `master`), вручную | CI, затем [`_deploy.yml`](.github/workflows/_deploy.yml) для staging и production |
 | [`tick.yml`](.github/workflows/tick.yml) | каждые 5 минут | Будильник для каждого задеплоенного окружения |
 
 **Что защищает от поломок:**
@@ -104,10 +104,11 @@ Tick (каждые 5 мин) ──▶ npx tgcloud run endpoints/tick из те�
 3. **Окружение production с подтверждением** (по желанию): Settings → Environments → New environment
    `production` → Required reviewers. Тогда выкладка в production ждёт нажатия «Approve».
 
-4. **Защита ветки `main`** (рекомендуется): Settings → Branches → Add rule → Require a pull request
+4. **Защита основной ветки** (рекомендуется): Settings → Branches → Add rule → Require a pull request
    и Require status checks → `Lint & test`.
 
-5. **Влейте код в `main`** — CD развернёт окружения, создаст таблицы, настроит вебхук, команды и
+5. **Влейте код в основную ветку** (`main` или `master` — та, что выбрана в Settings → General →
+   Default branch) — CD развернёт окружения, создаст таблицы, настроит вебхук, команды и
    кнопку меню «Напоминания» с мини-приложением. Будильник подхватит окружения сам.
 
 6. Напишите боту `/start`.
