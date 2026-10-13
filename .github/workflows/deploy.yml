@@ -1,4 +1,4 @@
-# CD: push в основную ветку репозитория (main или master) → тесты → staging → production.
+# CD: push в master (прод) → тесты → staging → production.
 #
 # Настройка (Settings → Secrets and variables → Actions):
 #   переменная DEPLOY_ENVIRONMENTS — какие окружения есть: "staging,production" или "production"
@@ -6,14 +6,15 @@
 #     (@BotFather → бот → Serverless → CLI Access → Access token)
 #   окружение production (Settings → Environments) — по желанию с обязательным подтверждением
 #
-# Ручной запуск (Actions → Deploy → Run workflow): деплой любой ветки, тега или коммита
-# в выбранное окружение — так же делается откат (укажите ref предыдущей версии).
+# Ручной запуск (Actions → Deploy → Run workflow):
+#   staging    — любая ветка, тег или коммит (так проверяются ветки PR до мержа);
+#   production — только при запуске из master; в ref можно указать старый коммит (откат).
+#                Код, не влитый в master, в production не попадает.
 name: Deploy
 
 on:
   push:
-    # Деплоит только основная ветка репозитория (см. условие в jobs.ci)
-    branches: [main, master]
+    branches: [master]
   workflow_dispatch:
     inputs:
       environment:
@@ -35,7 +36,6 @@ permissions:
 
 jobs:
   ci:
-    if: github.event_name == 'workflow_dispatch' || github.ref_name == github.event.repository.default_branch
     uses: ./.github/workflows/ci.yml
     with:
       ref: ${{ inputs.ref || github.sha }}
@@ -62,7 +62,7 @@ jobs:
       always() && needs.ci.result == 'success' &&
       (needs.staging.result == 'success' || needs.staging.result == 'skipped') &&
       ((github.event_name == 'push' && contains(vars.DEPLOY_ENVIRONMENTS, 'production')) ||
-       (github.event_name == 'workflow_dispatch' && inputs.environment == 'production'))
+       (github.event_name == 'workflow_dispatch' && inputs.environment == 'production' && github.ref_name == 'master'))
     uses: ./.github/workflows/_deploy.yml
     permissions:
       contents: write
