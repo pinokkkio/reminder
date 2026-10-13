@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { describeRepeat, nextOccurrence } from "../src/repeat";
-import { fromLocal, normalizeTimeZone, toLocal } from "../src/time";
+import { describeRepeat, nextOccurrence } from "../tgcloud/lib/repeat.js";
+import { fromLocal, normalizeTimeZone, toLocal } from "../tgcloud/lib/time.js";
 
-const at = (tz: string, y: number, mo: number, d: number, h = 9, mi = 0) => fromLocal({ year: y, month: mo, day: d, hour: h, minute: mi }, tz);
-const fmt = (t: number, tz: string) => {
+const at = (tz, y, mo, d, h = 9, mi = 0) => fromLocal({ year: y, month: mo, day: d, hour: h, minute: mi }, tz);
+const fmt = (t, tz) => {
   const l = toLocal(t, tz);
   return `${l.year}-${l.month}-${l.day} ${l.hour}:${String(l.minute).padStart(2, "0")}`;
 };
@@ -17,7 +17,7 @@ describe("nextOccurrence", () => {
 
   it("ежемесячно 31-го → последний день короткого месяца, затем снова 31-е", () => {
     const tz = "Europe/Moscow";
-    const r = { unit: "month" as const, every: 1, day: 31 };
+    const r = { unit: "month", every: 1, day: 31 };
     const feb = nextOccurrence(at(tz, 2027, 1, 31), r, tz);
     expect(fmt(feb, tz)).toBe("2027-2-28 9:00");
     expect(fmt(nextOccurrence(feb, r, tz), tz)).toBe("2027-3-31 9:00");
@@ -25,7 +25,7 @@ describe("nextOccurrence", () => {
 
   it("по дням недели", () => {
     const tz = "Europe/Moscow";
-    const r = { unit: "week" as const, every: 1, weekdays: [1, 4] };
+    const r = { unit: "week", every: 1, weekdays: [1, 4] };
     const mon = at(tz, 2026, 10, 19, 20);
     const thu = nextOccurrence(mon, r, tz);
     expect(fmt(thu, tz)).toBe("2026-10-22 20:00");
@@ -48,7 +48,7 @@ describe("describeRepeat", () => {
     [{ unit: "day", every: 21 }, "каждый 21 день"],
     [{ unit: "week", every: 1, weekdays: [1, 2, 3, 4, 5] }, "по будням"],
     [{ unit: "week", every: 1, weekdays: [1, 4] }, "по дням: пн, чт"],
-  ] as const)("%j", (r, s) => expect(describeRepeat(r as never)).toBe(s));
+  ])("%j", (r, s) => expect(describeRepeat(r)).toBe(s));
 });
 
 describe("normalizeTimeZone", () => {

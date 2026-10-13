@@ -4,17 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "db:migrate": "wrangler d1 migrations apply reminder-db --remote",
-    "db:migrate:local": "wrangler d1 migrations apply reminder-db --local",
-    "typecheck": "tsc --noEmit",
+    "deploy": "tgcloud push",
+    "migrate": "tgcloud migrate",
+    "status": "tgcloud status",
+    "tick": "tgcloud run endpoints/tick",
     "test": "vitest run"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261006.1",
-    "typescript": "^5.9.2",
-    "vitest": "^3.2.0",
-    "wrangler": "^4.40.0"
+    "@tgcloud/cli": "^0.2.0",
+    "vitest": "^3.2.0"
   }
 }

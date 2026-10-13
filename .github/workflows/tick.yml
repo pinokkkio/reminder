@@ -1,0 +1,38 @@
+# «Будильник» для напоминаний.
+#
+# У Telegram Serverless нет встроенного cron, поэтому GitHub Actions раз в 5 минут
+# запускает tgcloud/endpoints/tick.js на платформе (npx tgcloud run). Модуль
+# отправляет все наступившие напоминания.
+#
+# Включение: секрет репозитория TGCLOUD_TOKEN (BotFather → ваш бот → Serverless →
+# CLI Access → Access token) и переменная репозитория TICK_ENABLED=true.
+#
+# GitHub не гарантирует точность расписания: запуски бывают с задержкой в несколько
+# минут. Между запусками напоминания всё равно уходят при любом сообщении боту
+# или открытии мини-приложения.
+name: Tick
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    if: ${{ vars.TICK_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tgcloud run endpoints/tick '{}'
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}

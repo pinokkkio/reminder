@@ -1,0 +1,7 @@
+{
+  "$schema": "./node_modules/@tgcloud/cli/schema/tgcloud.json",
+  // Мини-приложение — статическая страница без сборки, хостится платформой
+  "static": {
+    "source": "web"
+  }
+}

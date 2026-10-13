@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { parseReminder } from "../src/parser";
-import { fromLocal, toLocal } from "../src/time";
+import { parseReminder } from "../tgcloud/lib/parser.js";
+import { fromLocal, toLocal } from "../tgcloud/lib/time.js";
 
 const TZ = "Europe/Moscow";
 // Вторник, 13 октября 2026, 11:20 по Москве
 const NOW = fromLocal({ year: 2026, month: 10, day: 13, hour: 11, minute: 20 }, TZ);
 
-function ok(input: string) {
+function ok(input) {
   const r = parseReminder(input, NOW, TZ);
   if (!r.ok) throw new Error(`${input}: ${r.error}`);
   const l = toLocal(r.at, TZ);
-  const pad = (n: number) => String(n).padStart(2, "0");
+  const pad = (n) => String(n).padStart(2, "0");
   return { ...r, when: `${l.year}-${pad(l.month)}-${pad(l.day)} ${pad(l.hour)}:${pad(l.minute)}` };
 }
 
